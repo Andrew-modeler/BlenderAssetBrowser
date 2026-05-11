@@ -14,6 +14,7 @@ Blender bridge, provenance tracking, fuzzy search.
 | Path | What's in it |
 |---|---|
 | [BlenderAssetBrowser/](BlenderAssetBrowser/) | The plugin itself — drop into your project's `Plugins/` folder. |
+| **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** | **Full user guide — install, every feature, troubleshooting.** |
 | [docs/TEAM_LIBRARY.md](docs/TEAM_LIBRARY.md) | Git LFS / Perforce workflow for shared team libraries. |
 | [BlenderAssetBrowser/THIRD_PARTY_NOTICES.txt](BlenderAssetBrowser/THIRD_PARTY_NOTICES.txt) | License notices for ONNX Runtime, SigLIP2, Assimp, SQLite. |
 
