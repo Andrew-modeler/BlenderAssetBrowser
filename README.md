@@ -1,5 +1,10 @@
 # BlenderAssetBrowser — Project Root
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Unreal Engine 5.3+](https://img.shields.io/badge/Unreal%20Engine-5.3%2B-313131?logo=unrealengine&logoColor=white)](https://www.unrealengine.com/)
+[![GitHub Stars](https://img.shields.io/github/stars/Andrew-modeler/BlenderAssetBrowser?style=social)](https://github.com/Andrew-modeler/BlenderAssetBrowser/stargazers)
+[![GitHub Issues](https://img.shields.io/github/issues/Andrew-modeler/BlenderAssetBrowser)](https://github.com/Andrew-modeler/BlenderAssetBrowser/issues)
+
 Free (Apache 2.0) Unreal Engine 5.3+ plugin that replicates Blender's Asset
 Browser for UE: centralized catalogs, cross-project library, AI auto-tagging,
 Blender bridge, provenance tracking, fuzzy search.
@@ -96,6 +101,24 @@ Asset Browser Blender-style/
     ├── TestProject.uproject
     └── Source/TestProject/
 ```
+
+## ❤️ Support development
+
+This plugin is **free and Apache 2.0** — no fees, no telemetry, no upsells.
+It will stay that way.
+
+If it saved you time and you'd like to say thanks, donations are welcome but
+never expected. I'm currently saving for an **RTX 5090** to keep iterating on
+the AI side of the plugin (larger tag vocabularies, faster local inference,
+fine-tuning on UE-asset thumbnails). Every bit helps me get there sooner.
+
+**Crypto** (preferred — instant, 0% platform fees):
+- **USDT (TRC20):** `TJ5uvnYXHgGALH4M9w4pH2kA1UsyzRYCD1` *(~1¢ network fee)*
+
+**Free things that also help a lot:**
+- Hit the ⭐ **Star** button at the top of this page — boosts visibility on GitHub
+- Open an issue if you hit a bug, or a PR if you fixed something
+- Tell another Unreal dev about the plugin
 
 ## License
 
