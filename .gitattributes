@@ -1,0 +1,42 @@
+# =============================================================================
+# Правила обработки файлов для git.
+#
+# Здесь две вещи:
+#   1) Какие файлы класть в Git LFS (Large File Storage) — для крупных бинарей.
+#      Обычный git плохо переваривает большие файлы и GitHub блокирует всё, что
+#      больше 100 МБ. LFS сохраняет такие файлы отдельно и кладёт в git только
+#      "ярлык" (текстовый указатель на 130 байт).
+#
+#   2) Нормализация переводов строк (line endings). Без этого Windows будет
+#      путаться с Linux: CRLF vs LF, и весь diff превратится в кашу.
+# =============================================================================
+
+# --- Git LFS: большие бинарные файлы ---
+
+# SigLIP2 vision model (~178 МБ — точно не влезет без LFS)
+*.onnx filter=lfs diff=lfs merge=lfs -text
+
+# Пред-вычисленные tag embeddings (~570 КБ — мелкие, но бинарные)
+BlenderAssetBrowser/Resources/TagVocabulary/*.bin filter=lfs diff=lfs merge=lfs -text
+
+# ONNX Runtime + Assimp — DLL/lib редистрибутивы, лежат в ThirdParty/
+BlenderAssetBrowser/ThirdParty/**/*.dll filter=lfs diff=lfs merge=lfs -text
+BlenderAssetBrowser/ThirdParty/**/*.lib filter=lfs diff=lfs merge=lfs -text
+
+# --- Нормализация переводов строк ---
+# Авто-определение для всех текстовых файлов; в репозитории храним LF.
+* text=auto eol=lf
+
+# Эти типы — Windows-only, оставляем CRLF чтобы Notepad и .bat-скрипты не плакали.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sln text eol=crlf
+
+# --- Явно бинарные форматы (никаких diff'ов) ---
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.uasset binary
+*.umap binary
