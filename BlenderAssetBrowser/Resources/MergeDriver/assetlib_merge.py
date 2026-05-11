@@ -38,9 +38,15 @@ def load(path: str) -> Dict[str, Any]:
         return json.load(f)
 
 
-def by_id(items: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
-    out = {}
+def by_id(items: Any) -> Dict[int, Dict[str, Any]]:
+    """Index a list-of-records by integer `id`. Silently drops malformed entries
+    instead of crashing with AttributeError on `.get` (audit LOW)."""
+    out: Dict[int, Dict[str, Any]] = {}
+    if not isinstance(items, list):
+        return out
     for it in items:
+        if not isinstance(it, dict):
+            continue
         rid = it.get("id")
         if isinstance(rid, int):
             out[rid] = it
@@ -82,6 +88,15 @@ def main(argv: List[str]) -> int:
     except Exception as e:
         print(f"merge: failed to read inputs: {e}", file=sys.stderr)
         return 1
+
+    # SECURITY (audit LOW): refuse anything that isn't a JSON object at root.
+    # A malformed sidecar (e.g. an array instead of dict) would previously
+    # propagate as an AttributeError when `.get` is called below — exit 1 is
+    # correct, but the traceback leaks local paths via stderr.
+    for name, doc in (("base", base), ("ours", ours), ("theirs", theirs)):
+        if not isinstance(doc, dict):
+            print(f"merge: {name} is not a JSON object; refusing to merge.", file=sys.stderr)
+            return 1
 
     if base.get("schema_version", 0) != SUPPORTED_SCHEMA \
        or ours.get("schema_version", 0) != SUPPORTED_SCHEMA \

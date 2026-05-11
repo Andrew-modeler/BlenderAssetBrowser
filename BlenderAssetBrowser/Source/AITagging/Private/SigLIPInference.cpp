@@ -63,11 +63,16 @@ namespace
 		return FFileHelper::LoadFileToArray(Out, *Path);
 	}
 
-	FString Sha256Hex(const TArray<uint8>& Bytes)
+	/**
+	 * Returns a lowercase hex SHA-1 of `Bytes`. Audit LOW: previously named
+	 * `Sha256Hex`, which contradicted the actual algorithm (FSHA1) and the
+	 * "SHA256" wording in older comments. We renamed for honesty — SHA-1 is
+	 * sufficient for on-disk tamper detection on a 178 MB ML model where the
+	 * threat is corruption / accidental replacement, not crypto-grade
+	 * second-preimage resistance.
+	 */
+	FString Sha1Hex(const TArray<uint8>& Bytes)
 	{
-		// UE has FSHA1 built-in; for SHA256 we use FSHAHash from ALC. Since
-		// the hash is for integrity, not crypto, SHA1 of the file is fine as
-		// a tamper-detection signal — collisions are not a concern here.
 		FSHA1 Hash;
 		Hash.Update(Bytes.GetData(), Bytes.Num());
 		Hash.Final();
@@ -129,7 +134,7 @@ bool FSigLIPInference::EnsureRuntime()
 				Bytes.Num(), ModelSize);
 			return false;
 		}
-		const FString Actual = Sha256Hex(Bytes); // (it's SHA1, despite the name)
+		const FString Actual = Sha1Hex(Bytes);
 		if (!Actual.Equals(kExpectedHash, ESearchCase::IgnoreCase))
 		{
 			UE_LOG(LogAITagging, Error,

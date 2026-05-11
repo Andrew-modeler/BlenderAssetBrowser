@@ -69,12 +69,28 @@ def _read_manifest(exchange_root: str) -> dict:
 
 
 def _write_incoming(exchange_root: str, name: str, target_ue_path: str, is_new: bool, overwrite: bool) -> str:
-    """Export the active scene's mesh to incoming/<name>.fbx and write the meta JSON LAST."""
+    """Export the active scene's mesh to incoming/<name>.fbx and write the meta JSON LAST.
+
+    SECURITY (audit LOW): public operators validate `name`/`target_ue_path`, but
+    the helper itself is reachable from third-party scripts or future operators.
+    Defense-in-depth — refuse path-escaping names HERE, so the invariant is
+    enforced regardless of caller.
+    """
+    if not _is_safe_name(name):
+        raise ValueError("Asset name has unsafe characters (alnum/-/_, 1..256 chars).")
+    if not _is_safe_ue_path(target_ue_path):
+        raise ValueError("target_ue_path must start with /Game/ and contain no '..'.")
+
     incoming = os.path.join(exchange_root, "incoming")
     os.makedirs(incoming, exist_ok=True)
 
-    fbx_path  = os.path.join(incoming, name + ".fbx")
-    meta_path = os.path.join(incoming, name + ".meta.json")
+    # Defense-in-depth: confirm the derived paths stay inside `incoming/`
+    # (handles symlink-style trickery and any future name regex regression).
+    fbx_path  = os.path.realpath(os.path.join(incoming, name + ".fbx"))
+    meta_path = os.path.realpath(os.path.join(incoming, name + ".meta.json"))
+    incoming_real = os.path.realpath(incoming) + os.sep
+    if not fbx_path.startswith(incoming_real) or not meta_path.startswith(incoming_real):
+        raise ValueError("Derived export path escaped incoming/.")
 
     # Select all mesh objects for export.
     bpy.ops.object.select_all(action="DESELECT")

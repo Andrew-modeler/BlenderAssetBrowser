@@ -49,6 +49,40 @@ namespace
 		}
 		return FString();
 	}
+
+	/**
+	 * Validate that the configured executable matches the kind the caller asked
+	 * for. Audit MEDIUM: without this, a user (or attacker who can write to
+	 * config) could put any `.exe` in SubstancePainterExecutable / Photoshop /
+	 * MaxExecutable and the plugin would happily launch it. The filename match
+	 * is loose by design — we accept any leading version/edition prefix.
+	 */
+	bool ExeMatchesKind(EDCCKind K, const FString& ExePath)
+	{
+		const FString FileLower = FPaths::GetCleanFilename(ExePath).ToLower();
+		switch (K)
+		{
+		case EDCCKind::Blender:          return FileLower == TEXT("blender.exe");
+		case EDCCKind::SubstancePainter: return FileLower.Contains(TEXT("painter"));
+		case EDCCKind::Photoshop:        return FileLower == TEXT("photoshop.exe");
+		case EDCCKind::Max3ds:           return FileLower == TEXT("3dsmax.exe");
+		}
+		return false;
+	}
+
+	bool IsSafeExePath(const FString& ExePath)
+	{
+		if (ExePath.IsEmpty() || ExePath.Len() > BAB::MAX_PATH_LEN) { return false; }
+		if (ExePath.Contains(TEXT(".."))) { return false; }
+		for (TCHAR C : ExePath)
+		{
+			if (C == TEXT('"') || C == TEXT('\n') || C == TEXT('\r') || C == TEXT('\t')) { return false; }
+			if (C < 32) { return false; }
+		}
+		if (!ExePath.EndsWith(TEXT(".exe"), ESearchCase::IgnoreCase)) { return false; }
+		IPlatformFile& PFM = FPlatformFileManager::Get().GetPlatformFile();
+		return PFM.FileExists(*ExePath);
+	}
 }
 
 EDCCKind FDCCLauncher::GuessKindFromExtension(const FString& Filename)
@@ -77,7 +111,24 @@ bool FDCCLauncher::OpenInDCC(EDCCKind Kind, const FString& SourceFile,
 			TEXT("DCCLauncher: no executable configured for kind %d."), static_cast<int32>(Kind));
 		return false;
 	}
-	if (!Exe.EndsWith(TEXT(".exe"), ESearchCase::IgnoreCase)) { return false; }
+	// SECURITY (audit LOW-MED): the previous check only matched the .exe
+	// suffix, so a poisoned config could put ANY .exe in SubstancePainter/
+	// Photoshop/Max paths. Tighten with: traversal/control-char reject,
+	// existence check, and a filename-vs-kind match.
+	if (!IsSafeExePath(Exe))
+	{
+		UE_LOG(LogBlenderBridge, Warning,
+			TEXT("DCCLauncher: configured exe rejected (missing, unsafe path, or not .exe): %s"), *Exe);
+		return false;
+	}
+	if (!ExeMatchesKind(Kind, Exe))
+	{
+		UE_LOG(LogBlenderBridge, Warning,
+			TEXT("DCCLauncher: configured exe '%s' does not match kind %d "
+			     "(expected blender.exe / *painter* / photoshop.exe / 3dsmax.exe)."),
+			*FPaths::GetCleanFilename(Exe), static_cast<int32>(Kind));
+		return false;
+	}
 
 	// argv-style launch — never shell-string.
 	const FString Args = FString::Printf(TEXT("\"%s\""), *SourceFile);
