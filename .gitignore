@@ -54,3 +54,13 @@ TestProject/
 
 # --- Одноразовые конфиги для gh api ---
 branch-protection.json
+
+# --- Внутренние рабочие документы — оставляем на диске, в репо не грузим ---
+# Эти файлы — мои заметки по проекту (план, статус, чек-листы, контекст
+# сессий). Публичный репо в них не нуждается; README достаточно как точки входа.
+CHECKLIST.md
+CONTEXT.md
+IMPLEMENTATION_PLAN.md
+PHASE_STATUS.md
+TODO.md
+Asset Browser Blender-style.md
