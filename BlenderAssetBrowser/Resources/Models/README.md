@@ -20,7 +20,14 @@
 
 ## Integrity
 
-Before the first inference call, `FSigLIPInference::EnsureModel` will compare
-the file's SHA256 against an expected hash (filled in once the binary is
-finalized). A mismatch refuses to load — this guards against an attacker
-swapping the model file on disk.
+Before the first inference call, `FSigLIPInference::EnsureRuntime` compares
+the file's **SHA-1** against a hash baked into the source at
+`SigLIPInference.cpp` (`kExpectedHash`). A mismatch refuses to load — this
+guards against on-disk corruption or accidental model swap.
+
+SHA-1 (not SHA-256) is intentional: the threat model here is integrity /
+tamper *detection*, not cryptographic non-repudiation. A 160-bit hash gives
+~80 bits of practical collision resistance against accidental corruption,
+which is plenty for a sanity check on a 186 MB file. For audit / supply-chain
+verification you should additionally check the upstream HuggingFace
+`siglip2_vision_fp16.onnx` digest yourself.

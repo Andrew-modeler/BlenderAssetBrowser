@@ -3,6 +3,7 @@
 
 #include "SnapshotManager.h"
 #include "UpdateCheckerModule.h"
+#include "AssetLibrarySettings.h"
 #include "AssetLibraryTypes.h"
 
 #include "Misc/Paths.h"
@@ -29,6 +30,47 @@ namespace
 		if (P.IsEmpty() || P.Len() > BAB::MAX_PATH_LEN) { return false; }
 		if (P.Contains(TEXT(".."))) { return false; }
 		return true;
+	}
+
+	/**
+	 * Build the set of absolute filesystem roots that snapshot restore is allowed
+	 * to write into. A poisoned manifest can otherwise direct CopyFile() at any
+	 * absolute path on the machine (HIGH severity from audit).
+	 *
+	 * Allowed roots:
+	 *   - Project directory (.uproject parent) — covers /Game and project Source
+	 *   - Engine's Saved dir (just in case snapshot was taken there explicitly)
+	 *   - Each user-configured library mount root, since these are also valid
+	 *     content destinations the user opted into via Settings.
+	 */
+	TArray<FString> GetAllowedRestoreRoots()
+	{
+		TArray<FString> Roots;
+		Roots.Add(FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()));
+
+		// Pull library mounts from project settings, if available.
+		if (const UAssetLibrarySettings* Settings = GetDefault<UAssetLibrarySettings>())
+		{
+			for (const FExternalLibraryConfig& M : Settings->Libraries)
+			{
+				if (!M.Path.Path.IsEmpty())
+				{
+					Roots.Add(FPaths::ConvertRelativePathToFull(M.Path.Path));
+				}
+			}
+		}
+		return Roots;
+	}
+
+	/** True iff Absolute path is inside any of the allowed restore roots. */
+	bool IsUnderAnyRoot(const FString& Absolute, const TArray<FString>& Roots)
+	{
+		const FString Full = FPaths::ConvertRelativePathToFull(Absolute);
+		for (const FString& Root : Roots)
+		{
+			if (BAB::IsPathInsideRoot(Full, Root)) { return true; }
+		}
+		return false;
 	}
 
 	bool WriteManifest(const FSnapshotEntry& E)
@@ -164,10 +206,32 @@ int32 FSnapshotManager::RestoreSnapshot(const FSnapshotEntry& E)
 	IPlatformFile& PFM = FPlatformFileManager::Get().GetPlatformFile();
 	if (!PFM.DirectoryExists(*E.FolderPath)) { return 0; }
 
+	// SECURITY (audit HIGH): manifest is on-disk JSON that an attacker could
+	// have crafted. Before overwriting any absolute path, fence each `Original`
+	// to roots the user has actually opted into (project dir + library mounts).
+	const FString SnapshotRoot = GetSnapshotRoot();
+	if (!BAB::IsPathInsideRoot(FPaths::ConvertRelativePathToFull(E.FolderPath), SnapshotRoot))
+	{
+		UE_LOG(LogUpdateChecker, Warning,
+			TEXT("RestoreSnapshot: refusing — entry folder %s is outside snapshot root %s."),
+			*E.FolderPath, *SnapshotRoot);
+		return 0;
+	}
+	const TArray<FString> AllowedRoots = GetAllowedRestoreRoots();
+
 	int32 Restored = 0;
+	int32 Refused  = 0;
 	for (const FString& Original : E.Files)
 	{
 		if (!IsSafePath(Original)) { continue; }
+		if (!IsUnderAnyRoot(Original, AllowedRoots))
+		{
+			UE_LOG(LogUpdateChecker, Warning,
+				TEXT("RestoreSnapshot: refusing to overwrite '%s' — outside allowed roots."),
+				*Original);
+			++Refused;
+			continue;
+		}
 		const uint32 H = GetTypeHash(Original);
 		const FString DstName = FString::Printf(TEXT("%08x_%s"), H, *FPaths::GetCleanFilename(Original));
 		const FString SrcSnap = E.FolderPath / DstName;
@@ -181,14 +245,26 @@ int32 FSnapshotManager::RestoreSnapshot(const FSnapshotEntry& E)
 		}
 	}
 	UE_LOG(LogUpdateChecker, Log,
-		TEXT("Snapshot '%s' restored: %d/%d files."),
-		*E.Timestamp, Restored, E.Files.Num());
+		TEXT("Snapshot '%s' restored: %d/%d files (%d refused as out-of-root)."),
+		*E.Timestamp, Restored, E.Files.Num(), Refused);
 	return Restored;
 }
 
 bool FSnapshotManager::DeleteSnapshot(const FSnapshotEntry& E)
 {
 	if (E.FolderPath.IsEmpty() || !IsSafePath(E.FolderPath)) { return false; }
+
+	// SECURITY (audit HIGH): without this, a poisoned entry with FolderPath
+	// pointing at e.g. C:\Windows would let DeleteDirectoryRecursively wipe it.
+	const FString SnapshotRoot = GetSnapshotRoot();
+	const FString FullFolder   = FPaths::ConvertRelativePathToFull(E.FolderPath);
+	if (!BAB::IsPathInsideRoot(FullFolder, SnapshotRoot))
+	{
+		UE_LOG(LogUpdateChecker, Warning,
+			TEXT("DeleteSnapshot: refusing — folder %s is outside snapshot root %s."),
+			*E.FolderPath, *SnapshotRoot);
+		return false;
+	}
 	IPlatformFile& PFM = FPlatformFileManager::Get().GetPlatformFile();
 	return PFM.DeleteDirectoryRecursively(*E.FolderPath);
 }

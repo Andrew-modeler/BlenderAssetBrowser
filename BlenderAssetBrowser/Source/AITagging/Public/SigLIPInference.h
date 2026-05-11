@@ -5,8 +5,8 @@
 //
 // Lifecycle:
 //   1. EnsureRuntime() lazily loads the bundled `siglip2_vision_fp16.onnx`
-//      after verifying its SHA256 against a hash baked into the binary
-//      (defense against tampered-on-disk model).
+//      after verifying its SHA-1 against a hash baked into the binary
+//      (tamper / corruption detection; not crypto-grade).
 //   2. ComputeEmbedding(thumbnailPng) -> 768-dim float vector.
 //   3. ScoreAgainstVocabulary(embedding, vocab_embeddings) -> tag scores
 //      using cosine similarity + the sigmoid scaling SigLIP was trained with.

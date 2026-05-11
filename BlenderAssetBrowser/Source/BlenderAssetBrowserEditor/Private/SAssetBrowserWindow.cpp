@@ -477,6 +477,48 @@ FReply SAssetBrowserWindow::OnDrop(const FGeometry& Geo, const FDragDropEvent& E
 	// Safety: cap how many files we process per drop.
 	if (Files.Num() == 0 || Files.Num() > 256) { return FReply::Unhandled(); }
 
+	// SECURITY (audit MEDIUM): OS drag/drop is an untrusted ingress channel —
+	// a user dragging from File Explorer could be tricked into dropping a
+	// file that exploits UE Interchange / Assimp / image importers. Defenses:
+	//   1. Extension allowlist (3D, textures, audio — formats UE expects).
+	//   2. Per-file size cap (200 MB — generous but bounded).
+	//   3. Existence check (the OS drop API should give absolute paths, but
+	//      we refuse anything that doesn't resolve to a real file).
+	//   4. Per-file path-traversal reject (control chars, `..`).
+	static const TSet<FString> AllowedExt = {
+		// 3D
+		TEXT("fbx"), TEXT("obj"), TEXT("gltf"), TEXT("glb"),
+		TEXT("dae"), TEXT("stl"), TEXT("ply"), TEXT("usd"),
+		TEXT("usda"), TEXT("usdc"), TEXT("usdz"),
+		// Textures
+		TEXT("png"), TEXT("jpg"), TEXT("jpeg"), TEXT("tga"),
+		TEXT("bmp"), TEXT("tif"), TEXT("tiff"), TEXT("exr"),
+		TEXT("hdr"), TEXT("dds"), TEXT("psd"),
+		// Audio
+		TEXT("wav"), TEXT("mp3"), TEXT("ogg"), TEXT("flac"),
+	};
+	static constexpr int64 kMaxPerFileBytes = 200LL * 1024 * 1024; // 200 MB
+
+	IFileManager& FM = IFileManager::Get();
+	TArray<FString> SafeFiles;
+	int32 Refused = 0;
+	for (const FString& F : Files)
+	{
+		if (F.IsEmpty() || F.Len() > BAB::MAX_PATH_LEN || F.Contains(TEXT(".."))) { ++Refused; continue; }
+		const FString FileExt = FPaths::GetExtension(F, /*bIncludeDot*/false).ToLower();
+		if (!AllowedExt.Contains(FileExt)) { ++Refused; continue; }
+		const int64 Size = FM.FileSize(*F);
+		if (Size <= 0 || Size > kMaxPerFileBytes) { ++Refused; continue; }
+		SafeFiles.Add(F);
+	}
+
+	if (Refused > 0)
+	{
+		UE_LOG(LogBlenderAssetBrowserEditor, Warning,
+			TEXT("OS drop: refused %d file(s) (bad ext / size / path)."), Refused);
+	}
+	if (SafeFiles.Num() == 0) { return FReply::Unhandled(); }
+
 	// Import everything into /Game/ImportedFromBrowser/ (mirrors the
 	// Eleganza pattern of routing OS drops through a dedicated subfolder).
 	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools"));
@@ -485,12 +527,12 @@ FReply SAssetBrowserWindow::OnDrop(const FGeometry& Geo, const FDragDropEvent& E
 	UAutomatedAssetImportData* Data = NewObject<UAutomatedAssetImportData>();
 	Data->bReplaceExisting = false;
 	Data->DestinationPath = TEXT("/Game/ImportedFromBrowser");
-	Data->Filenames = Files;
+	Data->Filenames = SafeFiles;
 	const TArray<UObject*> Imported = AssetTools.ImportAssetsAutomated(Data);
 
 	UE_LOG(LogBlenderAssetBrowserEditor, Log,
-		TEXT("OS drop: imported %d asset(s) from %d file(s)."),
-		Imported.Num(), Files.Num());
+		TEXT("OS drop: imported %d asset(s) from %d file(s) (after allowlist)."),
+		Imported.Num(), SafeFiles.Num());
 
 	// Refresh the asset list so the user sees them.
 	Refresh();

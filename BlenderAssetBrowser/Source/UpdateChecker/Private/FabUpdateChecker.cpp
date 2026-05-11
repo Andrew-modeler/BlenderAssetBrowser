@@ -158,6 +158,25 @@ void FFabUpdateChecker::CheckNow()
 		// SECURITY: HTTPS only. URL was validated at insert via Validate(),
 		// but defense-in-depth here too.
 		if (!C.Url.StartsWith(TEXT("https://"), ESearchCase::IgnoreCase)) { continue; }
+
+		// SECURITY (audit MEDIUM): the URL passed Validate() (HTTPS-only), but
+		// Validate doesn't check the *host*. An attacker who can write to the
+		// DB or .assetlib sidecar could set source_type='fab' with a
+		// source_url pointing at an internal HTTPS service — SSRF / data
+		// egress to an attacker domain. Allowlist the known Fab hosts.
+		const FString Host = FGenericPlatformHttp::GetUrlDomain(C.Url).ToLower();
+		const bool bAllowedHost =
+			Host.Equals(TEXT("fab.com"))         ||
+			Host.Equals(TEXT("www.fab.com"))     ||
+			Host.EndsWith(TEXT(".fab.com"));
+		if (!bAllowedHost)
+		{
+			UE_LOG(LogUpdateChecker, Warning,
+				TEXT("Fab update: refusing URL with non-Fab host '%s' (asset id=%lld)."),
+				*Host, C.Id);
+			continue;
+		}
+
 		EnqueueOne(C.Id, C.Url, C.Version);
 	}
 }
